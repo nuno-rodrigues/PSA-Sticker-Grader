@@ -83,6 +83,58 @@ function isEvaluation(value) {
     && typeof value.summary === 'string'
 }
 
+function parseJsonObject(text) {
+  try {
+    return JSON.parse(text)
+  } catch (originalError) {
+    let start = -1
+    let depth = 0
+    let inString = false
+    let escaped = false
+
+    for (let index = 0; index < text.length; index += 1) {
+      const character = text[index]
+      if (start === -1) {
+        if (character === '{') {
+          start = index
+          depth = 1
+        }
+        continue
+      }
+
+      if (inString) {
+        if (escaped) escaped = false
+        else if (character === '\\') escaped = true
+        else if (character === '"') inString = false
+        continue
+      }
+
+      if (character === '"') inString = true
+      else if (character === '{') depth += 1
+      else if (character === '}') {
+        depth -= 1
+        if (depth === 0) {
+          try {
+            return JSON.parse(text.slice(start, index + 1))
+          } catch {
+            break
+          }
+        }
+      }
+    }
+
+    throw originalError
+  }
+}
+
+function isOllamaCloud(baseUrl) {
+  try {
+    return new URL(baseUrl).hostname === 'ollama.com'
+  } catch {
+    return false
+  }
+}
+
 async function handleEvaluation(request, response, ollamaBaseUrl, model, apiKey) {
   if (request.method !== 'POST') {
     response.setHeader('Allow', 'POST')
@@ -126,6 +178,7 @@ async function handleEvaluation(request, response, ollamaBaseUrl, model, apiKey)
     required: ['isSticker', 'scores', 'notes', 'summary'],
     additionalProperties: false,
   }
+  const useOllamaCloud = isOllamaCloud(ollamaBaseUrl)
 
   let ollamaResponse
   try {
@@ -138,10 +191,11 @@ async function handleEvaluation(request, response, ollamaBaseUrl, model, apiKey)
       body: JSON.stringify({
         model,
         stream: false,
-        format: schema,
+        ...(useOllamaCloud ? {} : { format: schema }),
+        options: { temperature: 0 },
         messages: [{
           role: 'user',
-          content: `Assess the actual sticker visible in this photo, not just the artwork or a graphic that might represent a sticker. Set isSticker to true only if a sticker is clearly identifiable in the photo. If no sticker is clearly visible, set isSticker to false, use 10 for every score, explain that it cannot be assessed in every note, and do not invent a condition summary. When a sticker is visible, score centering, corners, edges, and surface using only 10, 9, 8, or 6. Judge the sticker boundaries and surface only; do not mistake rounded artwork, image composition, or lighting for sticker wear. Be conservative and cite visible evidence in each short note. If an area is obscured, too small, or not assessable from this view, clearly say so and avoid claiming defects you cannot see. These are informal estimates, not official PSA grades.\n\nWrite the summary and all notes in ${language === 'pt' ? 'European Portuguese' : language === 'es' ? 'Spanish' : 'English'}. Keep the JSON keys and score values unchanged.`,
+          content: `Assess the actual sticker visible in this photo, not just the artwork or a graphic that might represent a sticker. Set isSticker to true only if a sticker is clearly identifiable in the photo. If no sticker is clearly visible, set isSticker to false, use 10 for every score, explain that it cannot be assessed in every note, and do not invent a condition summary. When a sticker is visible, score centering, corners, edges, and surface using only 10, 9, 8, or 6. Judge the sticker boundaries and surface only; do not mistake rounded artwork, image composition, or lighting for sticker wear. Be conservative and cite visible evidence in each short note. If an area is obscured, too small, or not assessable from this view, clearly say so and avoid claiming defects you cannot see. These are informal estimates, not official PSA grades.\n\nWrite the summary and all notes in ${language === 'pt' ? 'European Portuguese' : language === 'es' ? 'Spanish' : 'English'}. Return only a JSON object matching this schema, with no markdown or extra text: ${JSON.stringify(schema)}`,
           images: [match[1]],
         }],
       }),
@@ -187,7 +241,7 @@ async function handleEvaluation(request, response, ollamaBaseUrl, model, apiKey)
 
   let evaluation
   try {
-    evaluation = JSON.parse(outputText)
+    evaluation = parseJsonObject(outputText)
   } catch (error) {
     console.error('Ollama sticker evaluation returned invalid JSON:', error)
     sendJson(response, 502, { error: 'Ollama returned an invalid evaluation. Please try again.' })
