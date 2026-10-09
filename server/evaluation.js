@@ -14,6 +14,21 @@ function sendJson(response, status, body) {
 
 function readJsonBody(request) {
   return new Promise((resolve, reject) => {
+    if (request.body !== undefined) {
+      try {
+        const body = typeof request.body === 'string' || Buffer.isBuffer(request.body)
+          ? JSON.parse(request.body.toString())
+          : request.body
+        if (!body || typeof body !== 'object') throw new Error()
+        resolve(body)
+      } catch {
+        const error = new Error('Request body must be valid JSON.')
+        error.statusCode = 400
+        reject(error)
+      }
+      return
+    }
+
     const chunks = []
     let size = 0
     let settled = false
@@ -215,7 +230,7 @@ async function handleUnlock(request, response, unlockKey) {
   sendJson(response, 200, { valid: true })
 }
 
-export function stickerEvaluationApi({
+export function createStickerEvaluationHandlers({
   baseUrl = 'http://127.0.0.1:11434',
   model = 'gemma3:4b',
   unlockKey = '',
@@ -241,15 +256,21 @@ export function stickerEvaluationApi({
     })
   }
 
+  return { evaluate: middleware, unlock: unlockMiddleware }
+}
+
+export function stickerEvaluationApi(options = {}) {
+  const { evaluate, unlock } = createStickerEvaluationHandlers(options)
+
   return {
     name: 'sticker-evaluation-api',
     configureServer(server) {
-      server.middlewares.use('/api/evaluate', middleware)
-      server.middlewares.use('/api/unlock', unlockMiddleware)
+      server.middlewares.use('/api/evaluate', evaluate)
+      server.middlewares.use('/api/unlock', unlock)
     },
     configurePreviewServer(server) {
-      server.middlewares.use('/api/evaluate', middleware)
-      server.middlewares.use('/api/unlock', unlockMiddleware)
+      server.middlewares.use('/api/evaluate', evaluate)
+      server.middlewares.use('/api/unlock', unlock)
     },
   }
 }
