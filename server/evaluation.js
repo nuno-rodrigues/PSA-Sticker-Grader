@@ -170,7 +170,7 @@ async function handleEvaluation(request, response, ollamaBaseUrl, model, apiKey)
     const message = result?.error || `Ollama request failed with status ${ollamaResponse.status}.`
     console.error('Ollama sticker evaluation failed:', message)
     if (ollamaResponse.status === 404) {
-      sendJson(response, 503, { error: `The "${model}" model is not installed. Run "ollama pull ${model}" in a terminal, then retry.` })
+      sendJson(response, 503, { error: `The "${model}" model is not available on the configured Ollama server. Install it on the machine running Ollama with "ollama pull ${model}", or set OLLAMA_MODEL to a model already installed there.` })
       return
     }
     sendJson(response, 502, { error: message })
