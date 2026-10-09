@@ -200,15 +200,115 @@ function App() {
       }
       if (!response.ok) throw new Error(result.error || 'Photo evaluation failed.')
 
+      const searchQuery = typeof result.marketSearchQuery === 'string' ? result.marketSearchQuery.trim() : ''
+      const canSearchMarketplace = result.isSticker && searchQuery.length >= 2
       setPhotos((current) => current.map((item) => (
         item.id === photo.id
-          ? { ...item, status: 'ready', evaluation: result, observations: result.scores, error: null }
+          ? {
+            ...item,
+            status: 'ready',
+            evaluation: result,
+            observations: result.scores,
+            priceEstimate: canSearchMarketplace ? { status: 'loading' } : { status: 'unavailable', reason: 'not_identified' },
+            error: null,
+          }
           : item
       )))
+
+      if (canSearchMarketplace) {
+        try {
+          const priceResponse = await fetch('/api/prices', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: searchQuery }),
+          })
+          let priceResult
+          try {
+            priceResult = await priceResponse.json()
+          } catch {
+            throw new Error('The price service returned an unreadable response.')
+          }
+
+          if (!priceResponse.ok) {
+            setPhotos((current) => current.map((item) => (
+              item.id === photo.id
+                ? {
+                  ...item,
+                  priceEstimate: {
+                    status: 'unavailable',
+                    reason: priceResult.code === 'not_configured' ? 'not_configured' : 'search_failed',
+                  },
+                }
+                : item
+            )))
+          } else {
+            setPhotos((current) => current.map((item) => (
+              item.id === photo.id
+                ? { ...item, priceEstimate: priceResult }
+                : item
+            )))
+          }
+        } catch {
+          setPhotos((current) => current.map((item) => (
+            item.id === photo.id
+              ? { ...item, priceEstimate: { status: 'unavailable', reason: 'search_failed' } }
+              : item
+          )))
+        }
+      }
     } catch (error) {
       setPhotos((current) => current.map((item) => (
         item.id === photo.id
           ? { ...item, status: 'error', error: error.message || 'Photo evaluation failed.' }
+          : item
+      )))
+    }
+  }
+
+  const suggestPhotoSelection = async (photo) => {
+    try {
+      const bitmap = await createImageBitmap(photo.file)
+      let imageData
+      try {
+        const scale = Math.min(1, 1024 / Math.max(bitmap.width, bitmap.height))
+        const canvas = document.createElement('canvas')
+        canvas.width = Math.max(1, Math.round(bitmap.width * scale))
+        canvas.height = Math.max(1, Math.round(bitmap.height * scale))
+        const context = canvas.getContext('2d')
+        if (!context) throw new Error('Could not prepare the image for selection.')
+        context.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+        imageData = canvas.toDataURL('image/jpeg', 0.85)
+      } finally {
+        bitmap.close()
+      }
+
+      const response = await fetch('/api/suggest-selection', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageData }),
+      })
+      let result
+      try {
+        result = await response.json()
+      } catch {
+        throw new Error('The selection service returned an unreadable response.')
+      }
+      if (!response.ok) throw new Error(result.error || 'Could not suggest a selection.')
+
+      setPhotos((current) => current.map((item) => (
+        item.id === photo.id && item.selectionSuggestionStatus === 'loading'
+          ? {
+            ...item,
+            crop: result.selection,
+            selectionSuggestionStatus: result.selection ? 'ready' : 'none',
+          }
+          : item
+      )))
+    } catch (error) {
+      console.error('Could not suggest a sticker selection.', error)
+      setPhotos((current) => current.map((item) => (
+        item.id === photo.id && item.selectionSuggestionStatus === 'loading'
+          ? { ...item, selectionSuggestionStatus: 'error' }
           : item
       )))
     }
@@ -245,6 +345,7 @@ function App() {
         file,
         status: 'pending',
         crop: null,
+        selectionSuggestionStatus: 'loading',
         observations: defaultObservations,
         evaluation: null,
         error: null,
@@ -259,6 +360,7 @@ function App() {
     setActivePhoto(photos.length + addedPhotos.length - 1)
     resetImageView()
     setPhotos((current) => [...current, ...addedPhotos])
+    addedPhotos.forEach((photo) => { void suggestPhotoSelection(photo) })
     const nextUploadCount = uploadCountRef.current + addedPhotos.length
     uploadCountRef.current = nextUploadCount
     setUploadCount(nextUploadCount)
@@ -286,6 +388,7 @@ function App() {
 
   const currentPhoto = photos[activePhoto]
   const observations = currentPhoto?.observations ?? defaultObservations
+  const priceEstimate = currentPhoto?.priceEstimate
   const score = currentPhoto?.status === 'ready' && currentPhoto.evaluation?.isSticker
     ? Number((Object.values(observations).reduce((total, value) => total + value, 0) / criteria.length).toFixed(1))
     : null
@@ -507,8 +610,20 @@ function App() {
     }
     if (!crop || crop.width < minimumCropSize || crop.height < minimumCropSize) return
     setPhotos((current) => current.map((photo, index) => (
-      index === activePhoto ? { ...photo, crop, evaluation: null, observations: defaultObservations } : photo
+      index === activePhoto
+        ? { ...photo, crop, selectionSuggestionStatus: 'manual', evaluation: null, observations: defaultObservations }
+        : photo
     )))
+  }
+
+  const startManualSelection = () => {
+    setCropDraft(null)
+    setPhotos((current) => current.map((photo, index) => (
+      index === activePhoto
+        ? { ...photo, crop: null, selectionSuggestionStatus: 'manual' }
+        : photo
+    )))
+    setIsPanMode(false)
   }
 
   const changeZoom = (direction) => {
@@ -528,7 +643,7 @@ function App() {
   const clearCropSelection = () => {
     setCropDraft(null)
     setPhotos((current) => current.map((photo, index) => (
-      index === activePhoto ? { ...photo, crop: null } : photo
+      index === activePhoto ? { ...photo, crop: null, selectionSuggestionStatus: 'manual' } : photo
     )))
   }
 
@@ -678,7 +793,7 @@ function App() {
                       <img className="active-photo" src={currentPhoto?.url} alt={`${t.uploadedPhoto}: ${currentPhoto?.name}`} draggable="false" />
                       {currentPhoto?.status === 'pending' && (
                         <div
-                          className="crop-selection"
+                          className={`crop-selection${currentPhoto.selectionSuggestionStatus === 'ready' ? ' suggested' : ''}`}
                           style={{
                             left: `${(cropDraft ?? currentPhoto.crop)?.x * 100 || 0}%`,
                             top: `${(cropDraft ?? currentPhoto.crop)?.y * 100 || 0}%`,
@@ -716,15 +831,40 @@ function App() {
 
               {currentPhoto?.status === 'pending' && (
                 <div className="photo-action">
-                  <p>{currentPhoto.crop
-                    ? t.selectedCropHelp
-                    : t.fullPhotoHelp}</p>
+                  <div className="photo-guidance">
+                    <p>{currentPhoto.selectionSuggestionStatus === 'loading'
+                      ? t.suggestingSelection
+                      : currentPhoto.selectionSuggestionStatus === 'ready'
+                        ? t.suggestedSelectionHelp
+                        : currentPhoto.selectionSuggestionStatus === 'error'
+                          ? t.selectionSuggestionFailed
+                          : currentPhoto.selectionSuggestionStatus === 'none'
+                          ? t.noSuggestedSelection
+                          : currentPhoto.crop
+                            ? t.selectedCropHelp
+                            : t.fullPhotoHelp}</p>
+                    <p className="photo-selection-tip">{t.selectionTip}</p>
+                  </div>
                   <div className="photo-action-buttons">
                     {currentPhoto.crop && (
                       <button className="clear-crop-button" type="button" onClick={clearCropSelection}>{t.useFullPhoto}</button>
                     )}
-                    <button className="analyze-button" type="button" onClick={() => { void evaluatePhoto(currentPhoto) }}>
-                      {currentPhoto.crop ? t.analyzeSelected : t.analyzeFull}
+                    {['loading', 'ready', 'none', 'error'].includes(currentPhoto.selectionSuggestionStatus) && (
+                      <button className="clear-crop-button" type="button" onClick={startManualSelection}>
+                        {t.makeOwnSelection}
+                      </button>
+                    )}
+                    <button
+                      className="analyze-button"
+                      type="button"
+                      disabled={currentPhoto.selectionSuggestionStatus === 'loading'}
+                      onClick={() => { void evaluatePhoto(currentPhoto) }}
+                    >
+                      {currentPhoto.selectionSuggestionStatus === 'ready'
+                        ? t.analyzeSuggested
+                        : currentPhoto.crop
+                          ? t.analyzeSelected
+                          : t.analyzeFull}
                     </button>
                   </div>
                 </div>
@@ -784,6 +924,53 @@ function App() {
                   <p className="evaluation-summary">{currentPhoto.evaluation.summary}</p>
                 )}
               </div>
+
+              <section className="price-estimate" aria-label={t.priceEstimate}>
+                <div className="price-estimate-heading">
+                  <h3>{t.priceEstimate}</h3>
+                  <span>{t.ebayLive}</span>
+                </div>
+                {!currentPhoto?.evaluation
+                  ? <p className="price-estimate-status">{t.priceAwaiting}</p>
+                  : !currentPhoto.evaluation.isSticker
+                    ? <p className="price-estimate-status">{t.priceNoSticker}</p>
+                    : priceEstimate?.status === 'loading'
+                      ? <p className="price-estimate-status" role="status">{t.priceSearching}</p>
+                      : priceEstimate?.status === 'available'
+                        ? (
+                          <>
+                            <p className="price-range-label">{t.priceAskingRange}</p>
+                            <p className="price-range-value">
+                              {new Intl.NumberFormat(language, { style: 'currency', currency: priceEstimate.priceRange.currency }).format(priceEstimate.priceRange.low)}
+                              {' – '}
+                              {new Intl.NumberFormat(language, { style: 'currency', currency: priceEstimate.priceRange.currency }).format(priceEstimate.priceRange.high)}
+                            </p>
+                            <p className="price-listing-count">{t.priceListingCount(priceEstimate.listingCount)}</p>
+                            {priceEstimate.listings?.length > 0 && (
+                              <ul className="price-listings">
+                                {priceEstimate.listings.map((listing) => (
+                                  <li key={listing.url}>
+                                    <a href={listing.url} target="_blank" rel="noreferrer">
+                                      <span>{listing.title}</span>
+                                      <strong>{new Intl.NumberFormat(language, { style: 'currency', currency: listing.currency }).format(listing.price)}</strong>
+                                    </a>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </>
+                        )
+                        : priceEstimate?.status === 'insufficient_matches'
+                          ? <p className="price-estimate-status">{t.priceFewMatches(priceEstimate.listingCount)}</p>
+                          : priceEstimate?.status === 'no_matches'
+                            ? <p className="price-estimate-status">{t.priceNoMatches}</p>
+                            : priceEstimate?.reason === 'not_identified'
+                              ? <p className="price-estimate-status">{t.priceNotIdentified}</p>
+                              : priceEstimate?.reason === 'not_configured'
+                                ? <p className="price-estimate-status">{t.priceNotConfigured}</p>
+                                : <p className="price-estimate-status">{t.priceSearchFailed}</p>}
+                <p className="price-sources-note">{t.priceSourcesNote}</p>
+              </section>
 
               {currentPhoto?.status === 'ready' && (
                 <div className="export-action">

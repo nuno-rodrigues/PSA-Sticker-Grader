@@ -1,6 +1,7 @@
 import react from '@vitejs/plugin-react'
 import { defineConfig, loadEnv } from 'vite'
 import { stickerEvaluationApi } from './server/evaluation.js'
+import { marketplacePriceApi } from './server/marketplace-prices.js'
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
@@ -10,10 +11,15 @@ export default defineConfig(({ mode }) => {
     plugins: [
       react(),
       stickerEvaluationApi({
-        baseUrl: process.env.OLLAMA_BASE_URL || env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434',
+        baseUrl: process.env.OLLAMA_BASE_URL || env.OLLAMA_BASE_URL || 'https://ollama.com',
         model: process.env.OLLAMA_MODEL || env.OLLAMA_MODEL || 'gemma4:31b',
         apiKey: process.env.OLLAMA_API_KEY || env.OLLAMA_API_KEY || '',
         unlockKey: process.env.STICKER_CHECK_UNLOCK_KEY || env.STICKER_CHECK_UNLOCK_KEY || '',
+      }),
+      marketplacePriceApi({
+        clientId: process.env.EBAY_CLIENT_ID || env.EBAY_CLIENT_ID || '',
+        clientSecret: process.env.EBAY_CLIENT_SECRET || env.EBAY_CLIENT_SECRET || '',
+        marketplaceId: process.env.EBAY_MARKETPLACE_ID || env.EBAY_MARKETPLACE_ID || 'EBAY_ES',
       }),
     ],
   }

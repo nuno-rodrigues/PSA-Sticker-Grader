@@ -3,8 +3,7 @@ import { createStickerEvaluationHandlers } from '../server/evaluation.js'
 const handlers = createStickerEvaluationHandlers({
   baseUrl: process.env.OLLAMA_BASE_URL || 'https://ollama.com',
   model: process.env.OLLAMA_MODEL || 'gemma4:31b',
-  apiKey: process.env.OLLAMA_API_KEY || 'bf78420e72bc44c7811c7affb38873cd.KUPmm2nsRTITkJlJ6TvXue9x',
-  unlockKey: process.env.STICKER_CHECK_UNLOCK_KEY || '',
+  apiKey: process.env.OLLAMA_API_KEY || '',
 })
 
-export default handlers.evaluate
+export default handlers.suggestSelection
