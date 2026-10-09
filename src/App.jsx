@@ -113,7 +113,7 @@ function App() {
   const [cropDraft, setCropDraft] = useState(null)
   const [imageZoom, setImageZoom] = useState(1)
   const [imagePan, setImagePan] = useState({ x: 0, y: 0 })
-  const [isPanMode, setIsPanMode] = useState(false)
+  const [isPanMode, setIsPanMode] = useState(true)
   const [isDonationDialogOpen, setIsDonationDialogOpen] = useState(false)
   const [isUnlockDialogOpen, setIsUnlockDialogOpen] = useState(() => (
     window.localStorage.getItem(uploadLockStorageKey) === 'true'
@@ -133,7 +133,7 @@ function App() {
   const resetImageView = () => {
     setImageZoom(1)
     setImagePan({ x: 0, y: 0 })
-    setIsPanMode(false)
+    setIsPanMode(true)
     setCropDraft(null)
     cropDragRef.current = null
     panDragRef.current = null
@@ -755,6 +755,69 @@ function App() {
               )}
             </section>
 
+            <aside className="score-panel" aria-live="polite">
+              <div className="score-topline"><span>{t.estimate}</span></div>
+              <div className={`score-display${score === null ? ' is-empty' : ''}${currentPhoto?.status === 'analyzing' ? ' is-analyzing' : ''}`}>
+                <div className="score-ring" style={{ '--score-progress': `${(score ?? 0) * 10}%` }}>
+                  <div className="score-ring-inner">
+                    <span className="score-number">{score ?? '—'}</span>
+                    <span className="score-out-of">{score === null
+                      ? currentPhoto?.status === 'analyzing' ? t.analyzing : currentPhoto?.evaluation?.isSticker === false ? t.noGrade : t.outOfTen
+                      : t.outOfTen}</span>
+                  </div>
+                </div>
+                <p className="grade-range">{score === null
+                  ? currentPhoto?.status === 'analyzing'
+                    ? t.evaluating
+                    : currentPhoto?.status === 'error'
+                      ? t.evaluationFailed
+                      : currentPhoto?.evaluation?.isSticker === false ? t.stickerUnconfirmed : t.awaitingPhotos
+                  : gradeLabel(score, t)}</p>
+                <p className="grade-caption">{score === null
+                  ? currentPhoto?.status === 'analyzing'
+                    ? t.takesSeconds
+                    : currentPhoto?.evaluation?.isSticker === false
+                      ? t.stickerVisibility
+                      : t.uploadToBegin
+                  : t.unofficialEstimate}</p>
+                {currentPhoto?.status === 'ready' && (
+                  <p className="evaluation-summary">{currentPhoto.evaluation.summary}</p>
+                )}
+              </div>
+
+              {currentPhoto?.status === 'ready' && (
+                <div className="export-action">
+                  <button className="export-results" type="button" onClick={() => { void exportResults() }} disabled={isExporting}>
+                    <Download size={15} /> {isExporting ? t.exportingResults : t.exportResults}
+                  </button>
+                  {exportMessage && <p className="export-message" role="alert">{exportMessage}</p>}
+                </div>
+              )}
+
+              {currentPhoto?.status === 'error' && (
+                <div className="evaluation-error" role="alert">
+                  <p>{currentPhoto.error}</p>
+                  <button type="button" onClick={() => { void evaluatePhoto(currentPhoto) }}>{t.retry}</button>
+                </div>
+              )}
+
+              <div className="score-breakdown">
+                <div className="breakdown-heading"><span>{t.areaBreakdown}</span><span>{t.weight}</span></div>
+                {criteria.map((criterion) => (
+                  <div className="breakdown-row" key={criterion.id}>
+                    <span>{t.criteria[criterion.id].name}</span>
+                    <div className="breakdown-track"><span style={{ width: `${(observations[criterion.id] / 10) * 100}%` }} /></div>
+                    <strong>{score === null ? '—' : observations[criterion.id]}</strong>
+                  </div>
+                ))}
+              </div>
+
+              <div className="score-footnote">
+                <span className="footnote-mark">i</span>
+                <p>{t.limitations}</p>
+              </div>
+            </aside>
+
             <section className="criteria-section" aria-label={t.conditionNotes}>
               <div className="section-heading criteria-heading">
                 <div className="heading-index">02</div>
@@ -794,68 +857,6 @@ function App() {
             </section>
           </div>
 
-          <aside className="score-panel" aria-live="polite">
-            <div className="score-topline"><span>{t.estimate}</span></div>
-            <div className={`score-display${score === null ? ' is-empty' : ''}${currentPhoto?.status === 'analyzing' ? ' is-analyzing' : ''}`}>
-              <div className="score-ring" style={{ '--score-progress': `${(score ?? 0) * 10}%` }}>
-                <div className="score-ring-inner">
-                  <span className="score-number">{score ?? '—'}</span>
-                  <span className="score-out-of">{score === null
-                    ? currentPhoto?.status === 'analyzing' ? t.analyzing : currentPhoto?.evaluation?.isSticker === false ? t.noGrade : t.outOfTen
-                    : t.outOfTen}</span>
-                </div>
-              </div>
-              <p className="grade-range">{score === null
-                ? currentPhoto?.status === 'analyzing'
-                  ? t.evaluating
-                  : currentPhoto?.status === 'error'
-                    ? t.evaluationFailed
-                    : currentPhoto?.evaluation?.isSticker === false ? t.stickerUnconfirmed : t.awaitingPhotos
-                : gradeLabel(score, t)}</p>
-              <p className="grade-caption">{score === null
-                ? currentPhoto?.status === 'analyzing'
-                  ? t.takesSeconds
-                  : currentPhoto?.evaluation?.isSticker === false
-                    ? t.stickerVisibility
-                    : t.uploadToBegin
-                : t.unofficialEstimate}</p>
-              {currentPhoto?.status === 'ready' && (
-                <p className="evaluation-summary">{currentPhoto.evaluation.summary}</p>
-              )}
-            </div>
-
-            {currentPhoto?.status === 'ready' && (
-              <div className="export-action">
-                <button className="export-results" type="button" onClick={() => { void exportResults() }} disabled={isExporting}>
-                  <Download size={15} /> {isExporting ? t.exportingResults : t.exportResults}
-                </button>
-                {exportMessage && <p className="export-message" role="alert">{exportMessage}</p>}
-              </div>
-            )}
-
-            {currentPhoto?.status === 'error' && (
-              <div className="evaluation-error" role="alert">
-                <p>{currentPhoto.error}</p>
-                <button type="button" onClick={() => { void evaluatePhoto(currentPhoto) }}>{t.retry}</button>
-              </div>
-            )}
-
-            <div className="score-breakdown">
-              <div className="breakdown-heading"><span>{t.areaBreakdown}</span><span>{t.weight}</span></div>
-              {criteria.map((criterion) => (
-                <div className="breakdown-row" key={criterion.id}>
-                  <span>{t.criteria[criterion.id].name}</span>
-                  <div className="breakdown-track"><span style={{ width: `${(observations[criterion.id] / 10) * 100}%` }} /></div>
-                  <strong>{score === null ? '—' : observations[criterion.id]}</strong>
-                </div>
-              ))}
-            </div>
-
-            <div className="score-footnote">
-              <span className="footnote-mark">i</span>
-              <p>{t.limitations}</p>
-            </div>
-          </aside>
         </section>
 
         {(isDonationDialogOpen || isUnlockDialogOpen) && (
