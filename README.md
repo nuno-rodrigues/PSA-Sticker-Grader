@@ -14,10 +14,10 @@ After an analysis is complete, export a PNG result image with the sticker photo,
 2. Open PowerShell and download the default vision model:
 
    ```powershell
-   ollama pull gemma3:4b
+   ollama pull gemma4:31b
    ```
 
-   This model download is several gigabytes and requires an internet connection. After it is downloaded, evaluations run locally.
+   This model download is about 19 GB and requires an internet connection. After it is downloaded, evaluations run locally.
 
 3. Install the app dependencies and start Sticker Check:
 
@@ -28,7 +28,7 @@ After an analysis is complete, export a PNG result image with the sticker photo,
 
 4. Open the local URL printed by Vite, usually `http://localhost:5173`.
 
-Ollama normally listens at `http://127.0.0.1:11434`. The app uses `gemma3:4b` by default. To use another vision model, set `OLLAMA_MODEL` in `.env.local`, for example:
+Ollama normally listens at `http://127.0.0.1:11434`. The app uses `gemma4:31b` by default. To use another vision model, set `OLLAMA_MODEL` in `.env.local`, for example:
 
 ```text
 OLLAMA_MODEL=llama3.2-vision:11b
@@ -38,4 +38,4 @@ Restart the Vite server after changing the model. `npm run preview` also serves 
 
 The Vite server provides the evaluation endpoints during local development and preview. On Vercel, the `api/evaluate.js` and `api/unlock.js` serverless functions provide the same endpoints.
 
-For a Vercel deployment, configure `OLLAMA_BASE_URL` as an environment variable with the URL of an Ollama server reachable from Vercel, and optionally configure `OLLAMA_MODEL`, `OLLAMA_API_KEY` (sent as a Bearer token when set), and `STICKER_CHECK_UNLOCK_KEY`. Store credentials in Vercel environment variables; never put them in client-side code. Do not set `OLLAMA_BASE_URL` to `127.0.0.1` or expose an Ollama server on your personal computer to the public internet. Redeploy after changing Vercel environment variables. Without a reachable Ollama server, the site can load but photo evaluation cannot complete.
+For a Vercel deployment using Ollama Cloud, set `OLLAMA_BASE_URL` to `https://ollama.com`, `OLLAMA_API_KEY` to an API key from [Ollama settings](https://ollama.com/settings/keys), and `OLLAMA_MODEL` to a vision-capable model available in Ollama Cloud, such as `gemma4:31b`. Cloud API model names differ from the `:cloud` names used with the Ollama app or CLI. You can also configure `STICKER_CHECK_UNLOCK_KEY`. Store credentials in Vercel environment variables; never put them in client-side code. Redeploy after changing Vercel environment variables. For a self-hosted Ollama server instead, set `OLLAMA_BASE_URL` to its URL reachable from Vercel; do not set it to `127.0.0.1` or expose an Ollama server on your personal computer to the public internet.

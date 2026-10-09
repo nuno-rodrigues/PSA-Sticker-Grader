@@ -235,7 +235,7 @@ async function handleUnlock(request, response, unlockKey) {
 
 export function createStickerEvaluationHandlers({
   baseUrl = 'http://127.0.0.1:11434',
-  model = 'gemma3:4b',
+  model = 'gemma4:31b',
   apiKey = '',
   unlockKey = '',
 } = {}) {
