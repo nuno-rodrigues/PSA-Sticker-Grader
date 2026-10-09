@@ -83,7 +83,7 @@ function isEvaluation(value) {
     && typeof value.summary === 'string'
 }
 
-async function handleEvaluation(request, response, ollamaBaseUrl, model) {
+async function handleEvaluation(request, response, ollamaBaseUrl, model, apiKey) {
   if (request.method !== 'POST') {
     response.setHeader('Allow', 'POST')
     sendJson(response, 405, { error: 'Use POST to evaluate an image.' })
@@ -131,7 +131,10 @@ async function handleEvaluation(request, response, ollamaBaseUrl, model) {
   try {
     ollamaResponse = await fetch(`${ollamaBaseUrl}/api/chat`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+      },
       body: JSON.stringify({
         model,
         stream: false,
@@ -233,10 +236,11 @@ async function handleUnlock(request, response, unlockKey) {
 export function createStickerEvaluationHandlers({
   baseUrl = 'http://127.0.0.1:11434',
   model = 'gemma3:4b',
+  apiKey = '',
   unlockKey = '',
 } = {}) {
   const middleware = (request, response) => {
-    handleEvaluation(request, response, baseUrl.replace(/\/+$/, ''), model).catch((error) => {
+    handleEvaluation(request, response, baseUrl.replace(/\/+$/, ''), model, apiKey).catch((error) => {
       console.error('Unexpected sticker evaluation server error:', error)
       if (!response.headersSent) {
         sendJson(response, 500, { error: 'An unexpected error interrupted the evaluation. Please try again.' })
